@@ -1,0 +1,95 @@
+#!/bin/sh
+#
+# bootstrap
+# -----------------------------------------------------------------------------
+# The "one command sets up this machine" entrypoint for vijayvaradan/home
+# (private). This script is hosted publicly since it has to run before any
+# GitHub auth exists, it's what a fresh machine actually fetches via curl. It
+# contains no secrets, just orchestration: install gh, authenticate, clone the
+# private dotfiles repo through gh's own authenticated transport (sidesteps
+# needing SSH keys just to get the first clone), then hand off to that repo's
+# own scripts for everything else.
+#
+# Usage: curl -fsSL <hosted-url> | sh
+# -----------------------------------------------------------------------------
+set -eu
+
+REPO_GH=vijayvaradan/home
+DEST="$HOME/.home"
+
+log() { printf '\n==> %s\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+case "$(uname -s)" in
+	Darwin) OS=macos ;;
+	Linux)  OS=linux ;;
+	*) echo "Unsupported OS: $(uname -s). This covers macOS and Linux (Ubuntu) only so far." >&2; exit 1 ;;
+esac
+
+# -----------------------------------------------------------------------------
+log "GitHub CLI"
+# -----------------------------------------------------------------------------
+if ! have gh; then
+	case "$OS" in
+	macos)
+		if ! have brew; then
+			echo "Homebrew is required. Install from https://brew.sh/ then re-run this script." >&2
+			exit 1
+		fi
+		brew install gh
+		;;
+	linux)
+		# Official apt install steps: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+		sudo mkdir -p -m 755 /etc/apt/keyrings
+		curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+			| sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+		sudo mkdir -p -m 755 /etc/apt/sources.list.d
+		echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+			| sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+		sudo apt-get update -qq
+		sudo apt-get install -y gh
+		;;
+	esac
+fi
+
+# -----------------------------------------------------------------------------
+log "GitHub auth"
+# -----------------------------------------------------------------------------
+if ! gh auth status >/dev/null 2>&1; then
+	echo "Not logged in. This opens a browser-based device-code flow, follow the prompts."
+	gh auth login
+fi
+
+# -----------------------------------------------------------------------------
+log "Clone dotfiles"
+# -----------------------------------------------------------------------------
+if [ -d "$DEST/.git" ]; then
+	echo "Already present at $DEST."
+else
+	# Explicit https:// URL, not the bare "owner/repo" shorthand: the whole
+	# point is to clone via gh's authenticated HTTPS transport before any SSH
+	# key exists, and the shorthand form instead uses whatever git_protocol is
+	# already configured locally, which could be ssh and defeat that.
+	gh repo clone "https://github.com/$REPO_GH" "$DEST"
+fi
+
+# -----------------------------------------------------------------------------
+log "SSH keys (personal/work identity split)"
+# -----------------------------------------------------------------------------
+"$DEST/bin/setup-github-ssh"
+
+# -----------------------------------------------------------------------------
+log "Symlink dotfiles"
+# -----------------------------------------------------------------------------
+"$DEST/bin/link-dotfiles"
+
+# -----------------------------------------------------------------------------
+log "Install dev toolchain"
+# -----------------------------------------------------------------------------
+case "$OS" in
+	macos) "$DEST/setup-dev-tools-macos.sh" ;;
+	linux) "$DEST/setup-dev-tools-ubuntu.sh" ;;
+esac
+
+log "Done. Open a fresh shell to pick up the new PATH."
