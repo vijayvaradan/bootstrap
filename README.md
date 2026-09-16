@@ -23,3 +23,23 @@ Everything past step 3 lives in the private repo and is documented there
 (`ONBOARDING.md`). This is the only copy of this script; it isn't tracked
 in `vijayvaradan/home` at all, since nothing there depends on it being
 present locally, it's purely the entrypoint that gets you to a cloned repo.
+
+## Skipping a toolchain
+
+The dev-tools install step supports `SKIP_RUST`, `SKIP_NODE`, `SKIP_GO`,
+`SKIP_JVM`, `SKIP_CPP`, `SKIP_FLUTTER`, and `SKIP_NEOVIM` (see the private
+repo's `ONBOARDING.md` for what each one covers). `export` the flag first,
+don't prefix the `curl` command with it - a prefix only applies to `curl`,
+never to `sh` on the other side of the pipe, so it silently never reaches
+the script:
+
+```bash
+export SKIP_RUST=1
+curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | sh
+```
+
+or prefix `sh` itself, on the receiving end of the pipe:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | SKIP_RUST=1 sh
+```
