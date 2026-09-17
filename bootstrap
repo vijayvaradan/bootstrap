@@ -20,6 +20,54 @@ DEST="$HOME/.home"
 log() { printf '\n==> %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# -----------------------------------------------------------------------------
+# TOOLCHAINS is required by setup-dev-tools-macos.sh/setup-dev-tools-ubuntu.sh,
+# which this script hands off to at the end. Checked here too, first thing,
+# so a bad or missing value fails immediately with no prompt, rather than
+# after GitHub auth and a repo clone have already happened.
+# -----------------------------------------------------------------------------
+toolchains_usage() {
+	cat >&2 <<'EOF'
+TOOLCHAINS is required: a case-insensitive, comma-separated list of the
+toolchains to install.
+
+  Valid tokens: RUST NODE GO JVM CPP FLUTTER
+  Sentinels:    NONE (install none of them)  ALL (install all of them)
+
+Examples:
+  TOOLCHAINS=RUST,GO curl -fsSL <hosted-url> | sh
+  curl -fsSL <hosted-url> | TOOLCHAINS=RUST,GO sh
+  TOOLCHAINS=NONE curl -fsSL <hosted-url> | sh
+EOF
+}
+
+if [ -z "${TOOLCHAINS+x}" ]; then
+	echo "TOOLCHAINS is not set." >&2
+	toolchains_usage
+	exit 1
+fi
+
+_tc_norm="$(printf '%s' "$TOOLCHAINS" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
+if [ -z "$_tc_norm" ]; then
+	echo "TOOLCHAINS is empty." >&2
+	toolchains_usage
+	exit 1
+elif [ "$_tc_norm" != "ALL" ] && [ "$_tc_norm" != "NONE" ]; then
+	IFS=','
+	for _tc_t in $_tc_norm; do
+		case "$_tc_t" in
+			RUST|NODE|GO|JVM|CPP|FLUTTER) ;;
+			*)
+				echo "Unrecognized TOOLCHAINS token: '$_tc_t'" >&2
+				toolchains_usage
+				exit 1
+				;;
+		esac
+	done
+	unset IFS
+fi
+unset _tc_norm _tc_t
+
 case "$(uname -s)" in
 	Darwin) OS=macos ;;
 	Linux)  OS=linux ;;
