@@ -29,14 +29,15 @@ have() { command -v "$1" >/dev/null 2>&1; }
 toolchains_usage() {
 	cat >&2 <<'EOF'
 TOOLCHAINS is required: a case-insensitive, comma-separated list of the
-toolchains to install.
+toolchains to install. Rust installs unconditionally (like Python/uv and
+mise), so it isn't a token here.
 
-  Valid tokens: RUST NODE GO JVM CPP FLUTTER
+  Valid tokens: NODE GO JVM CPP FLUTTER
   Sentinels:    NONE (install none of them)  ALL (install all of them)
 
 Examples:
-  TOOLCHAINS=RUST,GO curl -fsSL <hosted-url> | sh
-  curl -fsSL <hosted-url> | TOOLCHAINS=RUST,GO sh
+  TOOLCHAINS=GO,JVM curl -fsSL <hosted-url> | sh
+  curl -fsSL <hosted-url> | TOOLCHAINS=GO,JVM sh
   TOOLCHAINS=NONE curl -fsSL <hosted-url> | sh
 EOF
 }
@@ -56,7 +57,7 @@ elif [ "$_tc_norm" != "ALL" ] && [ "$_tc_norm" != "NONE" ]; then
 	IFS=','
 	for _tc_t in $_tc_norm; do
 		case "$_tc_t" in
-			RUST|NODE|GO|JVM|CPP|FLUTTER) ;;
+			NODE|GO|JVM|CPP|FLUTTER) ;;
 			*)
 				echo "Unrecognized TOOLCHAINS token: '$_tc_t'" >&2
 				toolchains_usage
@@ -67,6 +68,43 @@ elif [ "$_tc_norm" != "ALL" ] && [ "$_tc_norm" != "NONE" ]; then
 	unset IFS
 fi
 unset _tc_norm _tc_t
+
+# -----------------------------------------------------------------------------
+# MACHINE_OWNER is required by bin/setup-github-ssh, which this script hands
+# off to below. Checked here too, same reason as TOOLCHAINS above: fail
+# immediately, no prompt, before GitHub auth or a clone has happened.
+# -----------------------------------------------------------------------------
+machine_owner_usage() {
+	cat >&2 <<'EOF'
+MACHINE_OWNER is required: PERSONAL (personal SSH identity only) or BOTH
+(personal + work). Case-insensitive. No WORK-only value: the personal key is
+what vijayvaradan/home's own remote needs, so every machine gets it regardless.
+
+Examples:
+  MACHINE_OWNER=PERSONAL curl -fsSL <hosted-url> | sh
+  curl -fsSL <hosted-url> | MACHINE_OWNER=PERSONAL sh
+EOF
+}
+
+if [ -z "${MACHINE_OWNER+x}" ]; then
+	echo "MACHINE_OWNER is not set." >&2
+	machine_owner_usage
+	exit 1
+fi
+_mo_norm="$(printf '%s' "$MACHINE_OWNER" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
+case "$_mo_norm" in
+	PERSONAL|BOTH) ;;
+	*)
+		if [ -z "$_mo_norm" ]; then
+			echo "MACHINE_OWNER is empty." >&2
+		else
+			echo "Invalid MACHINE_OWNER: '$MACHINE_OWNER'." >&2
+		fi
+		machine_owner_usage
+		exit 1
+		;;
+esac
+unset _mo_norm
 
 case "$(uname -s)" in
 	Darwin) OS=macos ;;
