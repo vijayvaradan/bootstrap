@@ -4,8 +4,8 @@ One-command setup for a new macOS or Ubuntu machine, using
 [vijayvaradan/home](https://github.com/vijayvaradan/home) (private dotfiles).
 
 ```bash
-export TOOLCHAINS=ALL       # or e.g. GO,JVM, or NONE - see below; required, no default
-export MACHINE_OWNER=BOTH   # or PERSONAL - see below; required, no default
+export TOOLCHAINS=ALL      # or e.g. RUST,GO, or NONE - see below; required, no default
+export MACHINE_OWNER=WMG   # or VIJAY - see below; required, no default
 curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | sh
 ```
 
@@ -20,7 +20,8 @@ auth exists. It contains no secrets, just orchestration:
 4. Clones `vijayvaradan/home` via `gh`'s authenticated HTTPS transport, which
    works before any SSH key exists.
 5. Hands off to that repo's own scripts: `bin/setup-github-ssh` (reads
-   `MACHINE_OWNER` to decide whether to set up the work SSH identity),
+   `MACHINE_OWNER`, `VIJAY` or `WMG`, to decide whether to set up the work SSH
+   identity),
    `bin/link-dotfiles` (symlinks everything into `$HOME`), then
    `setup-dev-tools-macos.sh` or `setup-dev-tools-ubuntu.sh` (reads
    `TOOLCHAINS`) - all three read their variable from the environment this
@@ -34,11 +35,10 @@ present locally, it's purely the entrypoint that gets you to a cloned repo.
 ## Choosing toolchains
 
 `TOOLCHAINS` is required: a case-insensitive, comma-separated list of the
-toolchains to install. Valid tokens are `NODE GO JVM CPP FLUTTER`, plus the
-sentinels `NONE` (install none of them) and `ALL` (install all of them).
+toolchains to install. Valid tokens are `RUST NODE GO JVM CPP FLUTTER`, plus
+the sentinels `NONE` (install none of them) and `ALL` (install all of them).
 Unset, empty, or containing an unrecognized token, and the script aborts
-before doing anything else - no interactive prompt, by design. Rust, like
-Python/uv, installs unconditionally - it isn't a `TOOLCHAINS` token.
+before doing anything else - no interactive prompt, by design.
 
 `SKIP_NEOVIM=1` is separate and still opt-out (see the private repo's
 `ONBOARDING.md`): it controls only whether Neovim itself installs, unrelated
@@ -46,8 +46,8 @@ to which language toolchains are requested via `TOOLCHAINS`.
 
 ## Choosing SSH identities
 
-`MACHINE_OWNER` is required: `PERSONAL` (personal SSH identity only) or `BOTH`
-(personal + work), case-insensitive. There's no `WORK`-only value - the
+`MACHINE_OWNER` is required: `VIJAY` (personal SSH identity only) or `WMG`
+(personal + work), case-insensitive. There's no `WMG`-only value - the
 personal key is what `vijayvaradan/home`'s own remote needs, so every machine
 gets it regardless.
 
@@ -56,13 +56,13 @@ prefix only applies to `curl`, never to `sh` on the other side of the pipe,
 so it silently never reaches the script:
 
 ```bash
-export TOOLCHAINS=GO,JVM
-export MACHINE_OWNER=PERSONAL
+export TOOLCHAINS=RUST,GO
+export MACHINE_OWNER=VIJAY
 curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | sh
 ```
 
 or prefix `sh` itself, on the receiving end of the pipe:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | TOOLCHAINS=GO,JVM MACHINE_OWNER=PERSONAL sh
+curl -fsSL https://raw.githubusercontent.com/vijayvaradan/bootstrap/main/bootstrap | TOOLCHAINS=RUST,GO MACHINE_OWNER=VIJAY sh
 ```
