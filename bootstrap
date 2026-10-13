@@ -8,7 +8,8 @@
 # contains no secrets, just orchestration: install gh, authenticate, clone the
 # private dotfiles repo through gh's own authenticated transport (sidesteps
 # needing SSH keys just to get the first clone), then hand off to that repo's
-# own scripts for everything else.
+# own scripts for everything else: link the dotfiles, set up SSH keys and
+# identities (setup-github-ssh), install the toolchain.
 #
 # Usage: curl -fsSL <hosted-url> | sh
 # -----------------------------------------------------------------------------
@@ -141,10 +142,18 @@ fi
 # -----------------------------------------------------------------------------
 log "GitHub auth"
 # -----------------------------------------------------------------------------
-if ! gh auth status >/dev/null 2>&1; then
+# The token goes in ~/.config/gh/hosts.yml (--insecure-storage), not the
+# keyring: the dotfiles keep each GitHub account's login in its own config dir
+# (ONBOARDING.md §4). Until the dotfiles are linked, git's global config is a
+# throwaway file, so gh's git-credential setup can't create a real ~/.gitconfig
+# that link-dotfiles would then refuse to replace.
+GIT_CONFIG_GLOBAL="$(mktemp)"
+export GIT_CONFIG_GLOBAL
+if ! gh auth status -h github.com >/dev/null 2>&1; then
 	echo "Not logged in. This opens a browser-based device-code flow, follow the prompts."
-	gh auth login
+	gh auth login -h github.com --git-protocol https --web --insecure-storage
 fi
+gh auth setup-git -h github.com   # into the throwaway config, for the clone below
 
 # -----------------------------------------------------------------------------
 log "Clone dotfiles"
@@ -159,15 +168,25 @@ else
 	gh repo clone "https://github.com/$REPO_GH" "$DEST"
 fi
 
-# -----------------------------------------------------------------------------
-log "SSH keys (personal/work identity split)"
-# -----------------------------------------------------------------------------
-"$DEST/bin/setup-github-ssh"
+rm -f "$GIT_CONFIG_GLOBAL"
+unset GIT_CONFIG_GLOBAL
 
 # -----------------------------------------------------------------------------
 log "Symlink dotfiles"
 # -----------------------------------------------------------------------------
 "$DEST/bin/link-dotfiles"
+
+# -----------------------------------------------------------------------------
+log "SSH keys and identities (personal / WMG)"
+# -----------------------------------------------------------------------------
+# After link-dotfiles: identities come from the linked .gitconfig files, and
+# `gh` must resolve to the linked ~/bin/gh. It exits 1 while anything is
+# unresolved (e.g. an Azure DevOps key not yet added on the website) - report
+# that at the end instead of aborting the toolchain install.
+IDENTITIES_OK=1
+PATH="$HOME/bin:$PATH" "$DEST/bin/setup-github-ssh" || IDENTITIES_OK=0
+# clones made by gh from now on use SSH (the keys are set up)
+gh config set -h github.com git_protocol ssh
 
 # -----------------------------------------------------------------------------
 log "Install dev toolchain"
@@ -177,4 +196,9 @@ case "$OS" in
 	linux) "$DEST/setup-dev-tools-ubuntu.sh" ;;
 esac
 
-log "Done. Open a fresh shell to pick up the new PATH."
+if [ "$IDENTITIES_OK" = 1 ]; then
+	log "Done. Open a fresh shell to pick up the new PATH."
+else
+	log "Done, but identities need attention: open a fresh shell and re-run setup-github-ssh."
+	exit 1
+fi

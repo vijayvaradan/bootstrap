@@ -16,16 +16,18 @@ auth exists. It contains no secrets, just orchestration:
    aborts immediately (no prompt) if not - see below.
 2. Installs `gh` (GitHub CLI) if missing.
 3. Runs `gh auth login` if not already authenticated (a browser-based
-   device-code flow).
+   device-code flow), storing the token in `~/.config/gh/hosts.yml`
+   (`--insecure-storage`) rather than the keyring.
 4. Clones `vijayvaradan/home` via `gh`'s authenticated HTTPS transport, which
-   works before any SSH key exists.
-5. Hands off to that repo's own scripts: `bin/setup-github-ssh` (reads
-   `MACHINE_OWNER`, `VIJAY` or `WMG`, to decide whether to set up the work SSH
-   identity),
-   `bin/link-dotfiles` (symlinks everything into `$HOME`), then
-   `setup-dev-tools-macos.sh` or `setup-dev-tools-ubuntu.sh` (reads
-   `TOOLCHAINS`) - all three read their variable from the environment this
-   script inherited it into.
+   works before any SSH key exists. Until the dotfiles are linked, git's global
+   config is a throwaway file, so nothing creates a real `~/.gitconfig`.
+5. Hands off to that repo's own scripts, in this order: `bin/link-dotfiles`
+   (symlinks everything into `$HOME`), `bin/setup-github-ssh` (reads
+   `MACHINE_OWNER`, `VIJAY` or `WMG`; sets up the SSH keys and identities),
+   then `setup-dev-tools-macos.sh` or `setup-dev-tools-ubuntu.sh` (reads
+   `TOOLCHAINS`). If `setup-github-ssh` reports something unresolved (e.g. an
+   Azure DevOps key not yet added on the website), the toolchain install still
+   runs and the script ends by telling you to re-run `setup-github-ssh`.
 
 Everything past step 4 lives in the private repo and is documented there
 (`ONBOARDING.md`). This is the only copy of this script; it isn't tracked
