@@ -161,12 +161,18 @@ if ! gh auth status -h github.com >/dev/null 2>&1; then
 	echo "Not logged in. This opens a browser-based device-code flow."
 	echo "Log in as your PERSONAL account, $PERSONAL_GH. If the browser is signed in to"
 	echo "another account, switch accounts there (or use a private window) first."
-	echo "If asked \"Authenticate Git with your GitHub credentials?\", answer Y: it only"
-	echo "affects a temporary git config used for the clone below."
 	# the admin:* scopes let setup-github-ssh register the SSH keys without a
-	# second browser authorization
-	gh auth login -h github.com --git-protocol https --web --insecure-storage \
-		-s admin:public_key,admin:ssh_signing_key
+	# second browser authorization. With --skip-ssh-key (current gh) the login
+	# asks nothing; older gh asks one question instead.
+	if gh auth login --help 2>/dev/null | grep -q -- --skip-ssh-key; then
+		gh auth login -h github.com --git-protocol ssh --skip-ssh-key --web --insecure-storage \
+			-s admin:public_key,admin:ssh_signing_key
+	else
+		echo "If asked \"Authenticate Git with your GitHub credentials?\", answer Y: it only"
+		echo "affects a temporary git config used for the clone below."
+		gh auth login -h github.com --git-protocol https --web --insecure-storage \
+			-s admin:public_key,admin:ssh_signing_key
+	fi
 fi
 # This login is the personal gh login (~/.config/gh); any other account here
 # would act as the wrong one everywhere.
@@ -183,7 +189,17 @@ gh auth setup-git -h github.com   # into the throwaway config, for the clone bel
 log "Clone dotfiles"
 # -----------------------------------------------------------------------------
 if [ -d "$DEST/.git" ]; then
-	echo "Already present at $DEST."
+	# Update it: everything below runs the dotfiles' own scripts, so a stale
+	# clone (e.g. from an earlier, failed run) would run stale code.
+	echo "Already present at $DEST; updating it."
+	if [ -n "$(git -C "$DEST" status --porcelain)" ]; then
+		echo "$DEST has uncommitted changes - commit or discard them, then re-run." >&2
+		exit 1
+	fi
+	if ! git -C "$DEST" pull --ff-only; then
+		echo "Couldn't fast-forward $DEST (local commits not on GitHub, or no access) - sort it out, then re-run." >&2
+		exit 1
+	fi
 else
 	# Explicit https:// URL, not the bare "owner/repo" shorthand: the whole
 	# point is to clone via gh's authenticated HTTPS transport before any SSH
