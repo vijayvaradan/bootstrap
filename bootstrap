@@ -15,7 +15,15 @@
 # -----------------------------------------------------------------------------
 set -eu
 
+# Everything runs inside main(), called on the last line. Under `curl | sh`,
+# sh reads this script from stdin as it goes, so any program that reads stdin
+# (a y/N prompt, `vim -es`) would eat the rest of the script. Defining main
+# first makes sh read the whole script before anything runs; main then gets
+# the terminal as stdin.
+main() {
+
 REPO_GH=vijayvaradan/home
+PERSONAL_GH="${REPO_GH%%/*}"
 DEST="$HOME/.home"
 
 log() { printf '\n==> %s\n' "$*"; }
@@ -150,9 +158,25 @@ log "GitHub auth"
 GIT_CONFIG_GLOBAL="$(mktemp)"
 export GIT_CONFIG_GLOBAL
 if ! gh auth status -h github.com >/dev/null 2>&1; then
-	echo "Not logged in. This opens a browser-based device-code flow, follow the prompts."
-	gh auth login -h github.com --git-protocol https --web --insecure-storage
+	echo "Not logged in. This opens a browser-based device-code flow."
+	echo "Log in as your PERSONAL account, $PERSONAL_GH. If the browser is signed in to"
+	echo "another account, switch accounts there (or use a private window) first."
+	echo "If asked \"Authenticate Git with your GitHub credentials?\", answer Y: it only"
+	echo "affects a temporary git config used for the clone below."
+	# the admin:* scopes let setup-github-ssh register the SSH keys without a
+	# second browser authorization
+	gh auth login -h github.com --git-protocol https --web --insecure-storage \
+		-s admin:public_key,admin:ssh_signing_key
 fi
+# This login is the personal gh login (~/.config/gh); any other account here
+# would act as the wrong one everywhere.
+_login="$(gh api user --jq .login 2>/dev/null || true)"
+if [ "$_login" != "$PERSONAL_GH" ]; then
+	echo "gh is logged in as '${_login:-nobody}', but this must be $PERSONAL_GH." >&2
+	echo "Run: gh auth logout -h github.com${_login:+ -u $_login}   then re-run this script." >&2
+	exit 1
+fi
+unset _login
 gh auth setup-git -h github.com   # into the throwaway config, for the clone below
 
 # -----------------------------------------------------------------------------
@@ -174,7 +198,9 @@ unset GIT_CONFIG_GLOBAL
 # -----------------------------------------------------------------------------
 log "Symlink dotfiles"
 # -----------------------------------------------------------------------------
-"$DEST/bin/link-dotfiles"
+# Exits 1 if it had to skip a file it won't replace; reported at the end.
+LINKS_OK=1
+"$DEST/bin/link-dotfiles" || LINKS_OK=0
 
 # -----------------------------------------------------------------------------
 log "SSH keys and identities (personal / WMG)"
@@ -192,13 +218,25 @@ gh config set -h github.com git_protocol ssh
 log "Install dev toolchain"
 # -----------------------------------------------------------------------------
 case "$OS" in
-	macos) "$DEST/setup-dev-tools-macos.sh" ;;
-	linux) "$DEST/setup-dev-tools-ubuntu.sh" ;;
+	macos) TOOLCHAIN_SCRIPT="$DEST/setup-dev-tools-macos.sh" ;;
+	linux) TOOLCHAIN_SCRIPT="$DEST/setup-dev-tools-ubuntu.sh" ;;
 esac
+TOOLCHAIN_OK=1
+"$TOOLCHAIN_SCRIPT" || TOOLCHAIN_OK=0
 
-if [ "$IDENTITIES_OK" = 1 ]; then
+if [ "$LINKS_OK" = 1 ] && [ "$IDENTITIES_OK" = 1 ] && [ "$TOOLCHAIN_OK" = 1 ]; then
 	log "Done. Open a fresh shell to pick up the new PATH."
+	return 0
+fi
+log "Done, with problems:"
+[ "$LINKS_OK" = 1 ] || echo "  - some dotfiles weren't linked (see the SKIP lines above): move those files aside, then run ~/.home/bin/link-dotfiles"
+[ "$IDENTITIES_OK" = 1 ] || echo "  - identities need attention: open a fresh shell and run setup-github-ssh"
+[ "$TOOLCHAIN_OK" = 1 ] || echo "  - the toolchain install failed (see the error above): fix it, then re-run $TOOLCHAIN_SCRIPT"
+exit 1
+}
+
+if [ -r /dev/tty ] && : </dev/tty 2>/dev/null; then
+	main "$@" </dev/tty
 else
-	log "Done, but identities need attention: open a fresh shell and re-run setup-github-ssh."
-	exit 1
+	main "$@" </dev/null   # no terminal (CI): prompts read EOF and decline
 fi
