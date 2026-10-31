@@ -251,7 +251,9 @@ log "Done, with problems:"
 exit 1
 }
 
-if [ -r /dev/tty ] && : </dev/tty 2>/dev/null; then
+# The open is probed in a subshell: in dash (Ubuntu's sh), a failed redirect on
+# a special builtin like : exits the whole shell instead of failing the test.
+if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
 	main "$@" </dev/tty
 else
 	main "$@" </dev/null   # no terminal (CI): prompts read EOF and decline
