@@ -24,7 +24,9 @@ auth exists. It contains no secrets, just orchestration:
 5. Hands off to that repo's own scripts, in this order: `bin/link-dotfiles`
    (symlinks everything into `$HOME`), `bin/setup-github-ssh` (reads
    `MACHINE_OWNER`, `VIJAY` or `WMG`; sets up the SSH keys and identities),
-   then `setup-dev-tools-macos.sh` or `setup-dev-tools-ubuntu.sh` (reads
+   after which the clone's HTTPS `origin` is switched to SSH once SSH access
+   to the repo works (the throwaway config's credential helper is gone, so
+   HTTPS fetches would prompt for a username), then `setup-dev-tools-macos.sh` or `setup-dev-tools-ubuntu.sh` (reads
    `TOOLCHAINS`). If `setup-github-ssh` reports something unresolved (e.g. an
    Azure DevOps key not yet added on the website), the toolchain install still
    runs and the script ends by telling you to re-run `setup-github-ssh`.

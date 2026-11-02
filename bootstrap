@@ -229,6 +229,22 @@ IDENTITIES_OK=1
 PATH="$HOME/bin:$PATH" "$DEST/bin/setup-github-ssh" || IDENTITIES_OK=0
 # clones made by gh from now on use SSH (the keys are set up)
 gh config set -h github.com git_protocol ssh
+# The HTTPS clone above authenticated through the throwaway git config, which
+# is gone, so an HTTPS origin would prompt for a username on every fetch.
+# Switch to SSH once SSH access to the repo works; checked directly rather than
+# via IDENTITIES_OK, which is also 0 for unrelated problems (an Azure DevOps key
+# not yet added). Leaves other origins alone (e.g. a vijayvaradan.github.com one).
+REMOTE_OK=1
+SSH_URL="git@github.com:$REPO_GH.git"
+case "$(git -C "$DEST" remote get-url origin)" in
+	https://github.com/*)
+		if GIT_SSH_COMMAND="ssh -o BatchMode=yes" git ls-remote "$SSH_URL" HEAD >/dev/null 2>&1; then
+			git -C "$DEST" remote set-url origin "$SSH_URL"
+		else
+			REMOTE_OK=0
+		fi
+		;;
+esac
 
 # -----------------------------------------------------------------------------
 log "Install dev toolchain"
@@ -240,13 +256,14 @@ esac
 TOOLCHAIN_OK=1
 "$TOOLCHAIN_SCRIPT" || TOOLCHAIN_OK=0
 
-if [ "$LINKS_OK" = 1 ] && [ "$IDENTITIES_OK" = 1 ] && [ "$TOOLCHAIN_OK" = 1 ]; then
+if [ "$LINKS_OK" = 1 ] && [ "$IDENTITIES_OK" = 1 ] && [ "$REMOTE_OK" = 1 ] && [ "$TOOLCHAIN_OK" = 1 ]; then
 	log "Done. Open a fresh shell to pick up the new PATH."
 	return 0
 fi
 log "Done, with problems:"
 [ "$LINKS_OK" = 1 ] || echo "  - some dotfiles weren't linked (see the SKIP lines above): move those files aside, then run ~/.home/bin/link-dotfiles"
 [ "$IDENTITIES_OK" = 1 ] || echo "  - identities need attention: open a fresh shell and run setup-github-ssh"
+[ "$REMOTE_OK" = 1 ] || echo "  - $DEST still fetches over HTTPS (SSH to GitHub didn't work): once it does, run git -C $DEST remote set-url origin $SSH_URL"
 [ "$TOOLCHAIN_OK" = 1 ] || echo "  - the toolchain install failed (see the error above): fix it, then re-run $TOOLCHAIN_SCRIPT"
 exit 1
 }
